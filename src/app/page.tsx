@@ -38,7 +38,7 @@ export default function Home() {
   const [lastTauntTime, setLastTauntTime] = useState<number>(0);
   const [currentGiveUpMessage, setCurrentGiveUpMessage] = useState('');
   const giveUpIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const isMobileRef = useRef('ontouchstart' in window);
+  const isMobileRef = useRef(false);
 
   const taunts = [
     "Can't touch this! 🕺",
@@ -326,7 +326,12 @@ export default function Home() {
   }, [caseNumber, shouldMove]);
 
   const moveButton = () => {
-    if (!caseNumber || !buttonRef.current || !shouldMove) {
+    if (
+      !caseNumber ||
+      !buttonRef.current ||
+      !shouldMove ||
+      typeof window === 'undefined'
+    ) {
       setButtonPosition(centerButton());
       return;
     }
@@ -351,8 +356,12 @@ export default function Home() {
     // For mobile, use a random point instead of touch position
     const targetPos = isMobileRef.current
       ? {
-          x: Math.random() * window.innerWidth,
-          y: Math.random() * window.innerHeight,
+          x:
+            Math.random() *
+            (typeof window !== 'undefined' ? window.innerWidth : 0),
+          y:
+            Math.random() *
+            (typeof window !== 'undefined' ? window.innerHeight : 0),
         }
       : touchPosition || mousePosition.current;
 
@@ -364,8 +373,20 @@ export default function Home() {
 
     // Increased movement distance for mobile
     const baseDistance = isMobileRef.current
-      ? Math.min(800, Math.min(window.innerWidth, window.innerHeight) * 0.8)
-      : Math.min(300, Math.min(window.innerWidth, window.innerHeight) / 3);
+      ? Math.min(
+          800,
+          Math.min(
+            typeof window !== 'undefined' ? window.innerWidth : 800,
+            typeof window !== 'undefined' ? window.innerHeight : 600
+          ) * 0.8
+        )
+      : Math.min(
+          300,
+          Math.min(
+            typeof window !== 'undefined' ? window.innerWidth : 800,
+            typeof window !== 'undefined' ? window.innerHeight : 600
+          ) / 3
+        );
 
     // Add more randomness to the movement
     const randomDistance = baseDistance * (0.8 + Math.random() * 0.4); // 80-120% of base distance
@@ -390,15 +411,28 @@ export default function Home() {
     // Keep button within viewport bounds with dynamic margin
     const margin = Math.min(
       20,
-      Math.min(window.innerWidth, window.innerHeight) * 0.05
+      Math.min(
+        typeof window !== 'undefined' ? window.innerWidth : 800,
+        typeof window !== 'undefined' ? window.innerHeight : 600
+      ) * 0.05
     );
     newX = Math.max(
       margin,
-      Math.min(newX, window.innerWidth - button.width - margin)
+      Math.min(
+        newX,
+        typeof window !== 'undefined'
+          ? window.innerWidth
+          : 800 - button.width - margin
+      )
     );
     newY = Math.max(
       margin,
-      Math.min(newY, window.innerHeight - button.height - margin)
+      Math.min(
+        newY,
+        typeof window !== 'undefined'
+          ? window.innerHeight
+          : 600 - button.height - margin
+      )
     );
 
     // Convert viewport position to position relative to container
@@ -680,6 +714,11 @@ export default function Home() {
       setButtonPosition(centerButton());
       isInitializedRef.current = true;
     }
+  }, []);
+
+  // Initialize isMobileRef safely after mount
+  useEffect(() => {
+    isMobileRef.current = 'ontouchstart' in window;
   }, []);
 
   return (
