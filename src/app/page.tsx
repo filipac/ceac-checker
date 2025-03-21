@@ -38,6 +38,7 @@ export default function Home() {
   const [lastTauntTime, setLastTauntTime] = useState<number>(0);
   const [currentGiveUpMessage, setCurrentGiveUpMessage] = useState('');
   const giveUpIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isMobileRef = useRef('ontouchstart' in window);
 
   const taunts = [
     "Can't touch this! 🕺",
@@ -133,22 +134,33 @@ export default function Home() {
     setIsValidFormat(validateCaseNumber(value));
   };
 
-  // Modify the useEffect for game start
+  // Modify the useEffect for game start to include automatic movement on mobile
   useEffect(() => {
     if (caseNumber && isValidFormat) {
       if (!gameStartTime) {
         setGameStartTime(Date.now());
       }
+      // Start moving automatically on mobile
+      if (isMobileRef.current) {
+        setIsHovering(true);
+        startMoving();
+      }
       // Set timer for showing give up button
       const timer = setTimeout(() => {
         setShowGiveUp(true);
       }, 40000); // 40 seconds
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        if (isMobileRef.current) {
+          stopMoving();
+        }
+      };
     } else {
       setGameStartTime(null);
       setShowGiveUp(false);
+      stopMoving();
     }
-  }, [caseNumber, isValidFormat]); // Add isValidFormat to dependencies
+  }, [caseNumber, isValidFormat]);
 
   // Update timer in development mode
   useEffect(() => {
@@ -266,37 +278,29 @@ export default function Home() {
   const handleTouchMove = (e: TouchEvent) => {
     if (!buttonRef.current || !caseNumber || !shouldMove) return;
 
+    // On mobile, we'll use the touch position just to trigger movement
+    // but not to determine direction
     const touch = e.touches[0];
     setTouchPosition({ x: touch.clientX, y: touch.clientY });
 
-    const button = buttonRef.current.getBoundingClientRect();
-    const buttonCenterX = button.left + button.width / 2;
-    const buttonCenterY = button.top + button.height / 2;
-
-    const distance = Math.sqrt(
-      Math.pow(touch.clientX - buttonCenterX, 2) +
-        Math.pow(touch.clientY - buttonCenterY, 2)
-    );
-
-    // Increased sensitivity - button moves when finger is further away
-    if (distance < 400) {
+    // Always keep moving on mobile
+    if (!moveIntervalRef.current) {
       setIsHovering(true);
       startMoving();
-    } else if (distance > 600) {
-      stopMoving();
     }
   };
 
   const handleTouchStart = (e: TouchEvent) => {
+    if (!buttonRef.current || !caseNumber || !shouldMove) return;
+
     const touch = e.touches[0];
     setTouchPosition({ x: touch.clientX, y: touch.clientY });
 
-    if (!buttonRef.current || !caseNumber || !shouldMove) return;
-
-    // Always move the button on touch start, regardless of position
-    setIsHovering(true);
-    moveButton();
-    startMoving();
+    // Always keep moving on mobile
+    if (!moveIntervalRef.current) {
+      setIsHovering(true);
+      startMoving();
+    }
   };
 
   const handleTouchEnd = () => {
@@ -344,8 +348,13 @@ export default function Home() {
     const buttonCenterX = button.left + button.width / 2;
     const buttonCenterY = button.top + button.height / 2;
 
-    // Use touch position if available, otherwise use mouse position
-    const targetPos = touchPosition || mousePosition.current;
+    // For mobile, use a random point instead of touch position
+    const targetPos = isMobileRef.current
+      ? {
+          x: Math.random() * window.innerWidth,
+          y: Math.random() * window.innerHeight,
+        }
+      : touchPosition || mousePosition.current;
 
     // Calculate angle between pointer and button
     const angle = Math.atan2(
@@ -354,24 +363,27 @@ export default function Home() {
     );
 
     // Increased movement distance for mobile
-    const isMobile = !!touchPosition;
-    const baseDistance = isMobile
-      ? Math.min(500, Math.min(window.innerWidth, window.innerHeight) / 2)
+    const baseDistance = isMobileRef.current
+      ? Math.min(800, Math.min(window.innerWidth, window.innerHeight) * 0.8)
       : Math.min(300, Math.min(window.innerWidth, window.innerHeight) / 3);
 
     // Add more randomness to the movement
     const randomDistance = baseDistance * (0.8 + Math.random() * 0.4); // 80-120% of base distance
-    const randomAngleOffset = ((Math.random() - 0.5) * Math.PI) / 1; // ±90 degrees
+    const randomAngleOffset = isMobileRef.current
+      ? Math.random() * Math.PI * 2 // Complete random direction on mobile
+      : ((Math.random() - 0.5) * Math.PI) / 1; // ±90 degrees on desktop
 
     // Move in a more unpredictable direction
-    const moveAngle = angle + Math.PI + randomAngleOffset;
+    const moveAngle = isMobileRef.current
+      ? Math.random() * Math.PI * 2 // Complete random direction on mobile
+      : angle + Math.PI + randomAngleOffset;
 
     // Calculate new position with increased movement
     let newX = button.left + Math.cos(moveAngle) * randomDistance;
     let newY = button.top + Math.sin(moveAngle) * randomDistance;
 
-    // Add more random jitter for mobile
-    const jitterAmount = isMobile ? 100 : 60;
+    // Add more random jitter
+    const jitterAmount = isMobileRef.current ? 200 : 60;
     newX += (Math.random() - 0.5) * jitterAmount;
     newY += (Math.random() - 0.5) * jitterAmount;
 
@@ -401,9 +413,8 @@ export default function Home() {
 
   const startMoving = () => {
     if (moveIntervalRef.current || !shouldMove) return;
-    // Move more frequently on mobile
-    const isMobile = 'ontouchstart' in window;
-    const interval = isMobile ? 50 : 100;
+    // Move much more frequently on mobile
+    const interval = isMobileRef.current ? 30 : 100;
     moveIntervalRef.current = setInterval(moveButton, interval);
   };
 
