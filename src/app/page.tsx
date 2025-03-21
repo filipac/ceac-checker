@@ -69,7 +69,7 @@ export default function Home() {
   const showRandomTaunt = () => {
     const randomTaunt = taunts[Math.floor(Math.random() * taunts.length)];
     setCurrentTaunt(randomTaunt);
-    setTimeout(() => setCurrentTaunt(null), 2000);
+    setTimeout(() => setCurrentTaunt(null), 10000);
   };
 
   useEffect(() => {
@@ -665,15 +665,18 @@ export default function Home() {
           }
         }
         @keyframes fadeInOut {
-          0%,
-          100% {
+          0% {
             opacity: 0;
             transform: translateY(20px);
           }
-          10%,
-          90% {
+          5%,
+          95% {
             opacity: 1;
             transform: translateY(0);
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(20px);
           }
         }
         .animate-flash {
@@ -692,7 +695,7 @@ export default function Home() {
           animation: blur 15s ease-in-out;
         }
         .taunt-message {
-          animation: fadeInOut 2s ease-in-out;
+          animation: fadeInOut 10s ease-in-out;
         }
       `}</style>
 
