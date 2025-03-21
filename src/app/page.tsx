@@ -1,103 +1,807 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import confetti from 'canvas-confetti';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [caseNumber, setCaseNumber] = useState('');
+  const [buttonPosition, setButtonPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [isHovering, setIsHovering] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [showGiveUp, setShowGiveUp] = useState(false);
+  const [gaveUp, setGaveUp] = useState(false);
+  const [gameStartTime, setGameStartTime] = useState<number | null>(null);
+  const [timeElapsed, setTimeElapsed] = useState<number>(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const isInitializedRef = useRef(false);
+  const lastMoveTime = useRef(0);
+  const mousePosition = useRef({ x: 0, y: 0 });
+  const moveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [shouldMove, setShouldMove] = useState(true);
+  const [flashEffect, setFlashEffect] = useState<string | null>(null);
+  const [rotateScreen, setRotateScreen] = useState(false);
+  const [shakeScreen, setShakeScreen] = useState(false);
+  const [invertColors, setInvertColors] = useState(false);
+  const [blurScreen, setBlurScreen] = useState(false);
+  const effectTimeoutsRef = useRef<NodeJS.Timeout[]>([]);
+  const alertsShownRef = useRef(false);
+  const [touchPosition, setTouchPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [currentTaunt, setCurrentTaunt] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const taunts = [
+    "Can't touch this! 🕺",
+    'Too slow, grandma! 👵',
+    "You're as accurate as a stormtrooper! 🎯",
+    'My ex was better at catching than you! 💔',
+    'Is that your finger or are you just happy to miss me? 😏',
+    "I'm not playing hard to get, I AM hard to get! 💁‍♀️",
+    'Buy me dinner first! 🍷',
+    'Stop touching me there! 😳',
+    'At least take me on a date first! 🌹',
+    "That's what she said! 😏",
+    'Your aim is worse than your pickup lines! 🎯',
+    "I've seen snails move faster! 🐌",
+    "You couldn't catch COVID in 2020! 😷",
+    "You handle that mouse like it's your first time! 🖱️",
+    "Keep trying, I'm getting turned on! 🔥",
+  ];
+
+  const giveUpMessages = [
+    'Admit defeat, weakling!',
+    'Your mom would be disappointed...',
+    'Even my grandma could click faster!',
+    'Just give up already, this is sad 😢',
+    "You're as persistent as my ex... and just as unsuccessful!",
+    'This is more painful than my last breakup',
+    "You're making the button uncomfortable...",
+    "The safe word is 'Give Up'",
+    "That's it, keep chasing... said no one ever",
+    "You're like my dating life - lots of attempts, zero success",
+  ];
+
+  const showRandomTaunt = () => {
+    const randomTaunt = taunts[Math.floor(Math.random() * taunts.length)];
+    setCurrentTaunt(randomTaunt);
+    setTimeout(() => setCurrentTaunt(null), 2000);
+  };
+
+  useEffect(() => {
+    // Check URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const stopParam = urlParams.get('stop');
+    setShouldMove(stopParam !== '1');
+  }, []);
+
+  // Start timer when case number is entered
+  useEffect(() => {
+    if (caseNumber) {
+      if (!gameStartTime) {
+        setGameStartTime(Date.now());
+      }
+      // Set timer for showing give up button
+      const timer = setTimeout(() => {
+        setShowGiveUp(true);
+      }, 40000); // 40 seconds
+      return () => clearTimeout(timer);
+    } else {
+      setGameStartTime(null);
+      setShowGiveUp(false);
+    }
+  }, [caseNumber]); // Remove gameStartTime from dependencies
+
+  // Update timer in development mode
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && gameStartTime) {
+      const timerInterval = setInterval(() => {
+        setTimeElapsed(Math.floor((Date.now() - gameStartTime) / 1000));
+      }, 100);
+      return () => clearInterval(timerInterval);
+    }
+  }, [gameStartTime]);
+
+  // Clear all active effects
+  const clearEffects = () => {
+    setFlashEffect(null);
+    setRotateScreen(false);
+    setShakeScreen(false);
+    setInvertColors(false);
+    setBlurScreen(false);
+
+    // Clean up any existing DOM elements
+    const existingContainer = document.querySelector('.effect-container');
+    if (existingContainer) {
+      existingContainer.remove();
+    }
+    const existingCanvas = document.querySelector('.matrix-canvas');
+    if (existingCanvas) {
+      existingCanvas.remove();
+    }
+
+    // Clear all intervals and timeouts
+    effectTimeoutsRef.current.forEach(clearTimeout);
+    effectTimeoutsRef.current = [];
+  };
+
+  const triggerSuccess = (isGiveUp: boolean = false) => {
+    // Stop all movement and effects
+    stopMoving();
+    clearEffects();
+
+    setIsSuccess(true);
+    if (isGiveUp) {
+      setGaveUp(true);
+    }
+
+    // Fire confetti immediately
+    const defaults = {
+      startVelocity: 30,
+      spread: 360,
+      ticks: 60,
+      zIndex: 100,
+      disableForReducedMotion: true,
+    };
+
+    function randomInRange(min: number, max: number) {
+      return Math.random() * (max - min) + min;
+    }
+
+    // Initial burst
+    const particleCount = 50;
+    confetti({
+      ...defaults,
+      particleCount: 100,
+      origin: { x: 0.5, y: 0.6 },
+    });
+
+    // Continuous bursts
+    const startTime = Date.now();
+    const duration = 3000;
+
+    const interval = setInterval(() => {
+      const timeLeft = startTime + duration - Date.now();
+
+      if (timeLeft <= 0) {
+        return clearInterval(interval);
+      }
+
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 },
+      });
+      confetti({
+        ...defaults,
+        particleCount,
+        origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 },
+      });
+    }, 200);
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!buttonRef.current || !caseNumber || !shouldMove) return;
+
+    const touch = e.touches[0];
+    setTouchPosition({ x: touch.clientX, y: touch.clientY });
+
+    const button = buttonRef.current.getBoundingClientRect();
+    const buttonCenterX = button.left + button.width / 2;
+    const buttonCenterY = button.top + button.height / 2;
+
+    const distance = Math.sqrt(
+      Math.pow(touch.clientX - buttonCenterX, 2) +
+        Math.pow(touch.clientY - buttonCenterY, 2)
+    );
+
+    if (distance < 250) {
+      setIsHovering(true);
+      startMoving();
+    } else if (distance > 400) {
+      stopMoving();
+    }
+  };
+
+  const handleTouchStart = (e: TouchEvent) => {
+    const touch = e.touches[0];
+    setTouchPosition({ x: touch.clientX, y: touch.clientY });
+
+    if (!buttonRef.current || !caseNumber || !shouldMove) return;
+
+    const button = buttonRef.current.getBoundingClientRect();
+    if (
+      touch.clientX >= button.left &&
+      touch.clientX <= button.right &&
+      touch.clientY >= button.top &&
+      touch.clientY <= button.bottom
+    ) {
+      // If touched the button, move it immediately
+      setIsHovering(true);
+      moveButton();
+      startMoving();
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setTouchPosition(null);
+    setIsHovering(false);
+    stopMoving();
+  };
+
+  // Add touch event listeners
+  useEffect(() => {
+    window.addEventListener('touchmove', handleTouchMove);
+    window.addEventListener('touchstart', handleTouchStart);
+    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('mousemove', handleMouseMove);
+
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('mousemove', handleMouseMove);
+      stopMoving();
+    };
+  }, [caseNumber, shouldMove]);
+
+  const moveButton = () => {
+    if (!caseNumber || !buttonRef.current || !shouldMove) {
+      setButtonPosition(centerButton());
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastMoveTime.current < 50) return;
+    lastMoveTime.current = now;
+
+    // Show a taunt message 30% of the time when moving
+    if (Math.random() < 0.3) {
+      showRandomTaunt();
+    }
+
+    const button = buttonRef.current.getBoundingClientRect();
+    const currentPos = buttonPosition || centerButton();
+    if (!currentPos) return;
+
+    // Calculate button center position in viewport
+    const buttonCenterX = button.left + button.width / 2;
+    const buttonCenterY = button.top + button.height / 2;
+
+    // Use touch position if available, otherwise use mouse position
+    const targetPos = touchPosition || mousePosition.current;
+
+    // Calculate angle between pointer and button
+    const angle = Math.atan2(
+      targetPos.y - buttonCenterY,
+      targetPos.x - buttonCenterX
+    );
+
+    // Move in the opposite direction with some randomness
+    const distance = Math.min(
+      300,
+      Math.min(window.innerWidth, window.innerHeight) / 3
+    );
+    const randomAngleOffset = ((Math.random() - 0.5) * Math.PI) / 1.5; // ±60 degrees
+    const moveAngle = angle + Math.PI + randomAngleOffset;
+
+    // Calculate new position relative to viewport
+    let newX = button.left + Math.cos(moveAngle) * distance;
+    let newY = button.top + Math.sin(moveAngle) * distance;
+
+    // Add some random jitter
+    newX += (Math.random() - 0.5) * 60;
+    newY += (Math.random() - 0.5) * 60;
+
+    // Keep button within viewport bounds with margin based on screen size
+    const margin = Math.min(
+      20,
+      Math.min(window.innerWidth, window.innerHeight) * 0.05
+    );
+    newX = Math.max(
+      margin,
+      Math.min(newX, window.innerWidth - button.width - margin)
+    );
+    newY = Math.max(
+      margin,
+      Math.min(newY, window.innerHeight - button.height - margin)
+    );
+
+    // Convert viewport position to position relative to container
+    if (containerRef.current) {
+      const container = containerRef.current.getBoundingClientRect();
+      newX = newX - container.left - button.width / 2;
+      newY = newY - container.top;
+    }
+
+    setButtonPosition({ x: newX, y: newY });
+  };
+
+  const startMoving = () => {
+    if (moveIntervalRef.current || !shouldMove) return;
+    moveIntervalRef.current = setInterval(moveButton, 100);
+  };
+
+  const stopMoving = () => {
+    if (moveIntervalRef.current) {
+      clearInterval(moveIntervalRef.current);
+      moveIntervalRef.current = null;
+    }
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    mousePosition.current = { x: e.clientX, y: e.clientY };
+
+    if (!buttonRef.current || !caseNumber || !shouldMove) return;
+
+    const button = buttonRef.current.getBoundingClientRect();
+    const buttonCenterX = button.left + button.width / 2;
+    const buttonCenterY = button.top + button.height / 2;
+
+    const distance = Math.sqrt(
+      Math.pow(e.clientX - buttonCenterX, 2) +
+        Math.pow(e.clientY - buttonCenterY, 2)
+    );
+
+    if (distance < 250) {
+      setIsHovering(true);
+      startMoving();
+    } else if (distance > 400) {
+      stopMoving();
+    }
+  };
+
+  // Reset position when case number is cleared
+  useEffect(() => {
+    if (!caseNumber && isInitializedRef.current) {
+      setButtonPosition(centerButton());
+      setIsHovering(false);
+      stopMoving();
+    }
+  }, [caseNumber]);
+
+  // Handle funny effects every 15 seconds (first one at 5s)
+  useEffect(() => {
+    if (!gameStartTime || !caseNumber) return;
+
+    let currentEffectTimeout: NodeJS.Timeout | null = null;
+
+    const cleanupCurrentEffect = () => {
+      // Clean up any existing DOM elements
+      const existingContainer = document.querySelector('.effect-container');
+      if (existingContainer) {
+        existingContainer.remove();
+      }
+      const existingCanvas = document.querySelector('.matrix-canvas');
+      if (existingCanvas) {
+        existingCanvas.remove();
+      }
+
+      // Clear all states
+      setFlashEffect(null);
+      setRotateScreen(false);
+      setShakeScreen(false);
+      setInvertColors(false);
+      setBlurScreen(false);
+
+      // Clear all intervals
+      effectTimeoutsRef.current.forEach(clearTimeout);
+      effectTimeoutsRef.current = [];
+
+      if (currentEffectTimeout) {
+        clearTimeout(currentEffectTimeout);
+        currentEffectTimeout = null;
+      }
+    };
+
+    const startRandomEffect = () => {
+      cleanupCurrentEffect();
+
+      const effects = [
+        // Flash screen
+        () => {
+          setFlashEffect('flash');
+        },
+        // Rotate screen
+        () => {
+          setRotateScreen(true);
+        },
+        // Shake screen
+        () => {
+          setShakeScreen(true);
+        },
+        // Invert colors
+        () => {
+          setInvertColors(true);
+        },
+        // Blur screen
+        () => {
+          setBlurScreen(true);
+        },
+        // Cursor fire
+        () => {
+          const fire = (x: number, y: number) => {
+            confetti({
+              particleCount: 25,
+              startVelocity: 20,
+              spread: 360,
+              origin: { x: x / window.innerWidth, y: y / window.innerHeight },
+              colors: ['#ff0000', '#ff3300', '#ff6600', '#ff9900'],
+              ticks: 100,
+            });
+          };
+
+          const fireInterval = setInterval(() => {
+            if (mousePosition.current) {
+              fire(mousePosition.current.x, mousePosition.current.y);
+            }
+          }, 100);
+          effectTimeoutsRef.current.push(fireInterval);
+        },
+        // Rain emojis
+        () => {
+          const container = document.createElement('div');
+          container.className = 'effect-container';
+          container.style.position = 'fixed';
+          container.style.top = '0';
+          container.style.left = '0';
+          container.style.width = '100%';
+          container.style.height = '100%';
+          container.style.pointerEvents = 'none';
+          container.style.zIndex = '1000';
+          document.body.appendChild(container);
+
+          const emojis = [
+            '😂',
+            '🤪',
+            '🤡',
+            '👻',
+            '💀',
+            '🎃',
+            '🌈',
+            '🦄',
+            '🍕',
+            '💩',
+            '👾',
+            '🤖',
+            '👽',
+            '🎪',
+          ];
+
+          const createEmoji = () => {
+            const emoji = document.createElement('div');
+            emoji.style.position = 'absolute';
+            emoji.style.left = Math.random() * 100 + '%';
+            emoji.style.fontSize = Math.random() * 2 + 2 + 'rem';
+            emoji.style.transform =
+              'translateY(-100%) rotate(' + Math.random() * 360 + 'deg)';
+            emoji.textContent =
+              emojis[Math.floor(Math.random() * emojis.length)];
+            container.appendChild(emoji);
+
+            const animation = emoji.animate(
+              [
+                { transform: 'translateY(-100%) rotate(0deg)', opacity: 1 },
+                { transform: 'translateY(100vh) rotate(720deg)', opacity: 0 },
+              ],
+              {
+                duration: 3000,
+                easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+              }
+            );
+
+            animation.onfinish = () => emoji.remove();
+          };
+
+          const emojiInterval = setInterval(createEmoji, 100);
+          effectTimeoutsRef.current.push(emojiInterval);
+        },
+        // Matrix rain effect
+        () => {
+          const canvas = document.createElement('canvas');
+          canvas.className = 'matrix-canvas';
+          canvas.style.position = 'fixed';
+          canvas.style.top = '0';
+          canvas.style.left = '0';
+          canvas.style.width = '100%';
+          canvas.style.height = '100%';
+          canvas.style.pointerEvents = 'none';
+          canvas.style.zIndex = '999';
+          canvas.style.opacity = '0.7';
+          document.body.appendChild(canvas);
+
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+          const ctx = canvas.getContext('2d')!;
+
+          const chars = '0123456789ABCDEF';
+          const drops: number[] = [];
+          const fontSize = 16;
+          const columns = canvas.width / fontSize;
+
+          for (let i = 0; i < columns; i++) {
+            drops[i] = 1;
+          }
+
+          const drawMatrix = () => {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#0F0';
+            ctx.font = fontSize + 'px monospace';
+
+            for (let i = 0; i < drops.length; i++) {
+              const text = chars[Math.floor(Math.random() * chars.length)];
+              ctx.fillText(text, i * fontSize, drops[i] * fontSize);
+              if (
+                drops[i] * fontSize > canvas.height &&
+                Math.random() > 0.975
+              ) {
+                drops[i] = 0;
+              }
+              drops[i]++;
+            }
+          };
+
+          const matrixInterval = setInterval(drawMatrix, 50);
+          effectTimeoutsRef.current.push(matrixInterval);
+        },
+      ];
+
+      // Start a random effect
+      const randomEffect = effects[Math.floor(Math.random() * effects.length)];
+      randomEffect();
+
+      // Schedule cleanup and next effect after 15 seconds
+      currentEffectTimeout = setTimeout(() => {
+        cleanupCurrentEffect();
+        startRandomEffect(); // Start next effect immediately after cleanup
+      }, 15000);
+    };
+
+    // Start first effect after 5 seconds
+    const initialDelay = setTimeout(() => {
+      startRandomEffect();
+    }, 5000);
+
+    return () => {
+      clearTimeout(initialDelay);
+      cleanupCurrentEffect();
+    };
+  }, [gameStartTime, caseNumber]); // Remove timeElapsed dependency
+
+  const centerButton = () => {
+    if (containerRef.current && buttonRef.current) {
+      return {
+        x: 0,
+        y: 20,
+      };
+    }
+    return null;
+  };
+
+  useEffect(() => {
+    if (!isInitializedRef.current) {
+      setButtonPosition(centerButton());
+      isInitializedRef.current = true;
+    }
+  }, []);
+
+  return (
+    <main
+      className={`min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 p-8
+        ${flashEffect === 'flash' ? 'animate-flash' : ''}
+        ${rotateScreen ? 'animate-rotate' : ''}
+        ${shakeScreen ? 'animate-shake' : ''}
+        ${invertColors ? 'animate-invert' : ''}
+        ${blurScreen ? 'animate-blur' : ''}
+      `}
+    >
+      <style jsx global>{`
+        @keyframes flash {
+          0%,
+          100% {
+            filter: brightness(1);
+          }
+          25%,
+          75% {
+            filter: brightness(1.5);
+          }
+          50% {
+            filter: brightness(3);
+            background: white;
+          }
+        }
+        @keyframes rotate {
+          0% {
+            transform: rotate(0deg);
+          }
+          100% {
+            transform: rotate(360deg);
+          }
+        }
+        @keyframes shake {
+          0%,
+          100% {
+            transform: translate(0, 0) rotate(0deg);
+          }
+          25% {
+            transform: translate(-15px, 15px) rotate(-5deg);
+          }
+          50% {
+            transform: translate(15px, -15px) rotate(5deg);
+          }
+          75% {
+            transform: translate(-15px, -15px) rotate(-5deg);
+          }
+        }
+        @keyframes invert {
+          0%,
+          100% {
+            filter: invert(0);
+          }
+          25%,
+          75% {
+            filter: invert(0.5);
+          }
+          50% {
+            filter: invert(1);
+          }
+        }
+        @keyframes blur {
+          0%,
+          100% {
+            filter: blur(0);
+          }
+          25%,
+          75% {
+            filter: blur(5px);
+          }
+          50% {
+            filter: blur(10px);
+          }
+        }
+        @keyframes fadeInOut {
+          0%,
+          100% {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          10%,
+          90% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-flash {
+          animation: flash 15s ease-in-out;
+        }
+        .animate-rotate {
+          animation: rotate 15s linear forwards;
+        }
+        .animate-shake {
+          animation: shake 0.2s ease-in-out infinite;
+        }
+        .animate-invert {
+          animation: invert 15s ease-in-out;
+        }
+        .animate-blur {
+          animation: blur 15s ease-in-out;
+        }
+        .taunt-message {
+          animation: fadeInOut 2s ease-in-out;
+        }
+      `}</style>
+
+      {process.env.NODE_ENV === 'development' && gameStartTime && (
+        <div className="fixed bottom-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg font-mono text-sm">
+          Time: {timeElapsed}s / 40s
+          <br />
+          {timeElapsed < 5 ? (
+            <>First effect in: {5 - timeElapsed}s</>
+          ) : (
+            <>Current effect time: {timeElapsed % 15}s / 15s</>
+          )}
+          <br />
+          Give up: {showGiveUp ? 'Shown' : 'Hidden'}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      )}
+      <div className="max-w-md mx-auto text-center">
+        <h1 className="text-4xl font-bold mb-4 text-white">
+          DV 2025 case chance checker
+        </h1>
+        <div className="space-y-4">
+          <input
+            type="text"
+            value={caseNumber}
+            onChange={(e) => setCaseNumber(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !alertsShownRef.current) {
+                e.preventDefault();
+                alert('You tried to be a smart-ass, eh?');
+                alert('You can only submit by clicking THE button');
+                alertsShownRef.current = true;
+              }
+            }}
+            placeholder="Enter Case Number"
+            className="w-full px-4 py-2 text-lg rounded-lg bg-gray-700 text-white placeholder-gray-400 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+
+          {showGiveUp && !isSuccess && (
+            <button
+              onClick={() => triggerSuccess(true)}
+              className="px-6 py-3 text-lg font-semibold text-white rounded-lg shadow-lg bg-red-500 hover:bg-red-600 transform hover:scale-105 active:scale-95 transition-transform"
+            >
+              {
+                giveUpMessages[
+                  Math.floor(Math.random() * giveUpMessages.length)
+                ]
+              }
+            </button>
+          )}
+
+          <div
+            ref={containerRef}
+            className="relative h-[200px] border-2 border-transparent mx-auto"
+          >
+            {isSuccess ? (
+              <div className="animate-fade-in p-6 rounded-lg bg-green-500 text-white shadow-lg">
+                <p className="text-xl font-bold mb-2">
+                  {gaveUp
+                    ? 'Good for you giving up, the button is unclickable!'
+                    : 'Congratulations! You did it! 🎉'}
+                </p>
+                <p className="text-lg italic">
+                  &ldquo;Nobody can predict your case chances better than
+                  BritSimon, though. So no predictions for you today.&rdquo;
+                </p>
+              </div>
+            ) : (
+              <button
+                ref={buttonRef}
+                onClick={() => triggerSuccess(false)}
+                tabIndex={-1}
+                style={{
+                  position: 'absolute',
+                  left: '50%',
+                  transform: buttonPosition
+                    ? `translate(calc(-50% + ${buttonPosition.x}px), ${buttonPosition.y}px)`
+                    : 'translateX(-50%)',
+                  transition: isHovering ? 'transform 0.15s ease-out' : 'none',
+                  visibility: buttonPosition ? 'visible' : 'hidden',
+                  top: 0,
+                  zIndex: 50,
+                }}
+                className={`px-6 py-3 text-lg font-semibold text-white rounded-lg shadow-lg
+                  ${caseNumber ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 cursor-not-allowed'}
+                  transform hover:scale-105 active:scale-95 transition-transform`}
+              >
+                Check my chances
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {currentTaunt && (
+        <div
+          className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800/90 text-white text-xl font-bold px-6 py-3 rounded-lg shadow-lg taunt-message"
+          style={{
+            zIndex: 9999,
+            textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(5px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            minWidth: '300px',
+            textAlign: 'center',
+            transform: 'translate(-50%, 0) rotate(0deg)',
+          }}
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+          {currentTaunt}
+        </div>
+      )}
+    </main>
   );
 }
