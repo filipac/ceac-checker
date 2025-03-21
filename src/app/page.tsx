@@ -162,31 +162,56 @@ export default function Home() {
 
   // Clear all active effects
   const clearEffects = () => {
+    // Clear all state-based effects
     setFlashEffect(null);
     setRotateScreen(false);
     setShakeScreen(false);
     setInvertColors(false);
     setBlurScreen(false);
 
+    // Remove effect classes from main element
+    const mainElement = document.querySelector('main');
+    if (mainElement) {
+      mainElement.className = mainElement.className
+        .replace('animate-flash', '')
+        .replace('animate-rotate', '')
+        .replace('animate-shake', '')
+        .replace('animate-invert', '')
+        .replace('animate-blur', '');
+    }
+
     // Clean up any existing DOM elements
-    const existingContainer = document.querySelector('.effect-container');
-    if (existingContainer) {
-      existingContainer.remove();
-    }
-    const existingCanvas = document.querySelector('.matrix-canvas');
-    if (existingCanvas) {
-      existingCanvas.remove();
-    }
+    ['effect-container', 'matrix-canvas'].forEach((className) => {
+      const elements = document.querySelectorAll('.' + className);
+      elements.forEach((el) => el.remove());
+    });
 
     // Clear all intervals and timeouts
     effectTimeoutsRef.current.forEach(clearTimeout);
     effectTimeoutsRef.current = [];
+
+    // Force stop any animations
+    const animations = document.getAnimations();
+    animations.forEach((animation) => {
+      if (animation.playState !== 'finished') {
+        animation.cancel();
+      }
+    });
   };
 
   const triggerSuccess = (isGiveUp: boolean = false) => {
-    // Stop all movement and effects
+    // Stop all movement and effects immediately
     stopMoving();
     clearEffects();
+
+    // Clear any running effect intervals
+    const mainElement = document.querySelector('main');
+    if (mainElement) {
+      mainElement.style.animation = 'none';
+      mainElement.style.transform = 'none';
+      // Force a reflow
+      void mainElement.offsetHeight;
+    }
 
     setIsSuccess(true);
     if (isGiveUp) {
@@ -253,10 +278,11 @@ export default function Home() {
         Math.pow(touch.clientY - buttonCenterY, 2)
     );
 
-    if (distance < 250) {
+    // Increased sensitivity - button moves when finger is further away
+    if (distance < 400) {
       setIsHovering(true);
       startMoving();
-    } else if (distance > 400) {
+    } else if (distance > 600) {
       stopMoving();
     }
   };
@@ -267,18 +293,10 @@ export default function Home() {
 
     if (!buttonRef.current || !caseNumber || !shouldMove) return;
 
-    const button = buttonRef.current.getBoundingClientRect();
-    if (
-      touch.clientX >= button.left &&
-      touch.clientX <= button.right &&
-      touch.clientY >= button.top &&
-      touch.clientY <= button.bottom
-    ) {
-      // If touched the button, move it immediately
-      setIsHovering(true);
-      moveButton();
-      startMoving();
-    }
+    // Always move the button on touch start, regardless of position
+    setIsHovering(true);
+    moveButton();
+    startMoving();
   };
 
   const handleTouchEnd = () => {
@@ -335,23 +353,29 @@ export default function Home() {
       targetPos.x - buttonCenterX
     );
 
-    // Move in the opposite direction with some randomness
-    const distance = Math.min(
-      300,
-      Math.min(window.innerWidth, window.innerHeight) / 3
-    );
-    const randomAngleOffset = ((Math.random() - 0.5) * Math.PI) / 1.5; // ±60 degrees
+    // Increased movement distance for mobile
+    const isMobile = !!touchPosition;
+    const baseDistance = isMobile
+      ? Math.min(500, Math.min(window.innerWidth, window.innerHeight) / 2)
+      : Math.min(300, Math.min(window.innerWidth, window.innerHeight) / 3);
+
+    // Add more randomness to the movement
+    const randomDistance = baseDistance * (0.8 + Math.random() * 0.4); // 80-120% of base distance
+    const randomAngleOffset = ((Math.random() - 0.5) * Math.PI) / 1; // ±90 degrees
+
+    // Move in a more unpredictable direction
     const moveAngle = angle + Math.PI + randomAngleOffset;
 
-    // Calculate new position relative to viewport
-    let newX = button.left + Math.cos(moveAngle) * distance;
-    let newY = button.top + Math.sin(moveAngle) * distance;
+    // Calculate new position with increased movement
+    let newX = button.left + Math.cos(moveAngle) * randomDistance;
+    let newY = button.top + Math.sin(moveAngle) * randomDistance;
 
-    // Add some random jitter
-    newX += (Math.random() - 0.5) * 60;
-    newY += (Math.random() - 0.5) * 60;
+    // Add more random jitter for mobile
+    const jitterAmount = isMobile ? 100 : 60;
+    newX += (Math.random() - 0.5) * jitterAmount;
+    newY += (Math.random() - 0.5) * jitterAmount;
 
-    // Keep button within viewport bounds with margin based on screen size
+    // Keep button within viewport bounds with dynamic margin
     const margin = Math.min(
       20,
       Math.min(window.innerWidth, window.innerHeight) * 0.05
@@ -377,7 +401,10 @@ export default function Home() {
 
   const startMoving = () => {
     if (moveIntervalRef.current || !shouldMove) return;
-    moveIntervalRef.current = setInterval(moveButton, 100);
+    // Move more frequently on mobile
+    const isMobile = 'ontouchstart' in window;
+    const interval = isMobile ? 50 : 100;
+    moveIntervalRef.current = setInterval(moveButton, interval);
   };
 
   const stopMoving = () => {
