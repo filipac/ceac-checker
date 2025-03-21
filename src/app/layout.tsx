@@ -5,7 +5,7 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Ceac Checker - Try to catch me!',
+  title: 'Ceac chances checker',
   description: 'A fun and interactive case number checker with a twist',
 };
 
