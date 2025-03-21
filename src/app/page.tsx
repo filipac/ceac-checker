@@ -5,6 +5,7 @@ import confetti from 'canvas-confetti';
 
 export default function Home() {
   const [caseNumber, setCaseNumber] = useState('');
+  const [isValidFormat, setIsValidFormat] = useState(false);
   const [buttonPosition, setButtonPosition] = useState<{
     x: number;
     y: number;
@@ -34,6 +35,9 @@ export default function Home() {
     y: number;
   } | null>(null);
   const [currentTaunt, setCurrentTaunt] = useState<string | null>(null);
+  const [lastTauntTime, setLastTauntTime] = useState<number>(0);
+  const [currentGiveUpMessage, setCurrentGiveUpMessage] = useState('');
+  const giveUpIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const taunts = [
     "Can't touch this! 🕺",
@@ -66,10 +70,47 @@ export default function Home() {
     "You're like my dating life - lots of attempts, zero success",
   ];
 
+  useEffect(() => {
+    // Set initial give up message and start interval when showGiveUp becomes true
+    if (showGiveUp && !giveUpIntervalRef.current) {
+      setCurrentGiveUpMessage(
+        giveUpMessages[Math.floor(Math.random() * giveUpMessages.length)]
+      );
+
+      // Change message every 7 seconds
+      giveUpIntervalRef.current = setInterval(() => {
+        setCurrentGiveUpMessage(
+          giveUpMessages[Math.floor(Math.random() * giveUpMessages.length)]
+        );
+      }, 7000);
+    }
+
+    // Cleanup interval when component unmounts or showGiveUp becomes false
+    return () => {
+      if (giveUpIntervalRef.current) {
+        clearInterval(giveUpIntervalRef.current);
+        giveUpIntervalRef.current = null;
+      }
+    };
+  }, [showGiveUp]);
+
+  // Clear interval when game is successful
+  useEffect(() => {
+    if (isSuccess && giveUpIntervalRef.current) {
+      clearInterval(giveUpIntervalRef.current);
+      giveUpIntervalRef.current = null;
+    }
+  }, [isSuccess]);
+
   const showRandomTaunt = () => {
+    const now = Date.now();
+    // Only show a new taunt if at least 15 seconds have passed since the last one
+    if (now - lastTauntTime < 15000) return;
+
     const randomTaunt = taunts[Math.floor(Math.random() * taunts.length)];
     setCurrentTaunt(randomTaunt);
-    setTimeout(() => setCurrentTaunt(null), 10000);
+    setLastTauntTime(now);
+    setTimeout(() => setCurrentTaunt(null), 15000);
   };
 
   useEffect(() => {
@@ -79,9 +120,22 @@ export default function Home() {
     setShouldMove(stopParam !== '1');
   }, []);
 
-  // Start timer when case number is entered
+  // Add validation function
+  const validateCaseNumber = (value: string) => {
+    const regex = /^2025[A-Z]{2}\d+$/;
+    return regex.test(value);
+  };
+
+  // Modify the input change handler
+  const handleCaseNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.toUpperCase();
+    setCaseNumber(value);
+    setIsValidFormat(validateCaseNumber(value));
+  };
+
+  // Modify the useEffect for game start
   useEffect(() => {
-    if (caseNumber) {
+    if (caseNumber && isValidFormat) {
       if (!gameStartTime) {
         setGameStartTime(Date.now());
       }
@@ -94,7 +148,7 @@ export default function Home() {
       setGameStartTime(null);
       setShowGiveUp(false);
     }
-  }, [caseNumber]); // Remove gameStartTime from dependencies
+  }, [caseNumber, isValidFormat]); // Add isValidFormat to dependencies
 
   // Update timer in development mode
   useEffect(() => {
@@ -259,8 +313,8 @@ export default function Home() {
     if (now - lastMoveTime.current < 50) return;
     lastMoveTime.current = now;
 
-    // Show a taunt message 30% of the time when moving
-    if (Math.random() < 0.3) {
+    // Reduced probability to 5% and only if no taunt is currently showing
+    if (!currentTaunt && Math.random() < 0.05) {
       showRandomTaunt();
     }
 
@@ -720,7 +774,7 @@ export default function Home() {
           <input
             type="text"
             value={caseNumber}
-            onChange={(e) => setCaseNumber(e.target.value)}
+            onChange={handleCaseNumberChange}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !alertsShownRef.current) {
                 e.preventDefault();
@@ -729,20 +783,26 @@ export default function Home() {
                 alertsShownRef.current = true;
               }
             }}
-            placeholder="Enter Case Number"
-            className="w-full px-4 py-2 text-lg rounded-lg bg-gray-700 text-white placeholder-gray-400 border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Enter Case Number (Format: 2025XX...)"
+            className={`w-full px-4 py-2 text-lg rounded-lg bg-gray-700 text-white placeholder-gray-400 border focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+              caseNumber && !isValidFormat
+                ? 'border-red-500'
+                : 'border-gray-600'
+            }`}
           />
+          {caseNumber && !isValidFormat && (
+            <p className="text-red-500 text-sm mt-1 text-left">
+              Invalid format. Must be 2025 followed by 2 letters and numbers
+              (e.g., 2025EU12345)
+            </p>
+          )}
 
           {showGiveUp && !isSuccess && (
             <button
               onClick={() => triggerSuccess(true)}
               className="px-6 py-3 text-lg font-semibold text-white rounded-lg shadow-lg bg-red-500 hover:bg-red-600 transform hover:scale-105 active:scale-95 transition-transform"
             >
-              {
-                giveUpMessages[
-                  Math.floor(Math.random() * giveUpMessages.length)
-                ]
-              }
+              {currentGiveUpMessage}
             </button>
           )}
 
@@ -774,12 +834,13 @@ export default function Home() {
                     ? `translate(calc(-50% + ${buttonPosition.x}px), ${buttonPosition.y}px)`
                     : 'translateX(-50%)',
                   transition: isHovering ? 'transform 0.15s ease-out' : 'none',
-                  visibility: buttonPosition ? 'visible' : 'hidden',
+                  visibility:
+                    buttonPosition && isValidFormat ? 'visible' : 'hidden',
                   top: 0,
                   zIndex: 50,
                 }}
                 className={`px-6 py-3 text-lg font-semibold text-white rounded-lg shadow-lg
-                  ${caseNumber ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 cursor-not-allowed'}
+                  ${isValidFormat ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 cursor-not-allowed'}
                   transform hover:scale-105 active:scale-95 transition-transform`}
               >
                 Check my chances
@@ -791,15 +852,29 @@ export default function Home() {
 
       {currentTaunt && (
         <div
-          className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-gray-800/90 text-white text-xl font-bold px-6 py-3 rounded-lg shadow-lg taunt-message"
           style={{
+            position: 'fixed',
+            bottom: '32px',
+            left: '50%',
+            transform: 'translateX(-50%)',
             zIndex: 9999,
+            backgroundColor: 'rgba(31, 41, 55, 0.9)',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
             textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
             backdropFilter: 'blur(5px)',
             border: '1px solid rgba(255,255,255,0.1)',
             minWidth: '300px',
             textAlign: 'center',
-            transform: 'translate(-50%, 0) rotate(0deg)',
+            fontSize: '1.25rem',
+            fontWeight: 'bold',
+            opacity: 1,
+            transition: 'opacity 0.5s ease-in-out',
+            willChange: 'transform, opacity',
+            transformStyle: 'preserve-3d',
+            pointerEvents: 'none',
           }}
         >
           {currentTaunt}
